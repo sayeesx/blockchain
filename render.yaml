@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: smartchain-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port 10000
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000

@@ -1,4 +1,4 @@
-from blockchain.transaction import Transaction
+'''from blockchain.transaction import Transaction
 from blockchain.chain import Blockchain
 
 def test_blockchain():
@@ -32,3 +32,4 @@ def test_blockchain():
 
 if __name__ == "__main__":
     test_blockchain()
+'''

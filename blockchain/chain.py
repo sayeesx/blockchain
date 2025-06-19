@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .block import Block
 from .transaction import Transaction
 import time
@@ -107,3 +107,32 @@ class Blockchain:
             self.difficulty += 1
         elif avg_block_time > 12:  # Too slow
             self.difficulty = max(1, self.difficulty - 1)
+
+    def get_block_by_hash(self, block_hash: str) -> Optional[Dict]:
+        """Search for a block by its hash."""
+        for block in self.chain:
+            if block.hash == block_hash:
+                return block.to_dict()
+        return None
+
+    def get_transaction_history(self, address: str) -> List[Dict]:
+        """Get all transactions for an address."""
+        transactions = []
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx['sender'] == address or tx['receiver'] == address:
+                    transactions.append({
+                        'block_hash': block.hash,
+                        'timestamp': block.timestamp,
+                        **tx
+                    })
+        return transactions
+
+    def get_analytics(self) -> Dict:
+        """Get chain analytics."""
+        return {
+            'total_blocks': len(self.chain),
+            'average_block_time': self._calculate_avg_block_time(),
+            'current_difficulty': self.difficulty,
+            'total_transactions': sum(len(block.transactions) for block in self.chain)
+        }

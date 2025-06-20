@@ -1,6 +1,7 @@
 import os
 from pymongo import MongoClient
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,8 +14,12 @@ if not MONGODB_URI:
 # Create a MongoDB client
 client = MongoClient(MONGODB_URI)
 
-# Connect to the 'smartchain' database
-_db = client['smartchain']
+# Dynamically select the database from the URI
+parsed = urlparse(MONGODB_URI)
+db_name = (parsed.path[1:] if parsed.path else None) or os.getenv('MONGODB_DB', 'blockchain')
+if not db_name:
+    raise ValueError('Database name not found in MONGODB_URI or MONGODB_DB')
+_db = client[db_name]
 
 # Export collection references for easy use
 blocks = _db['blocks']

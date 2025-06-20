@@ -2,6 +2,8 @@ from typing import List, Dict, Any, Optional
 from .block import Block
 from .transaction import Transaction
 import time
+# --- MongoDB helpers import ---
+from db import helpers as db_helpers
 
 class Blockchain:
     def __init__(self):
@@ -16,6 +18,8 @@ class Blockchain:
         genesis_block = Block(0, [], "0")
         genesis_block.mine_block(self.difficulty)
         self.chain.append(genesis_block)
+        # Store genesis block in MongoDB
+        db_helpers.blocks.insert_one(genesis_block.to_dict())
 
     def get_latest_block(self) -> Block:
         """Return the most recent block."""
@@ -30,18 +34,23 @@ class Blockchain:
         )
         block.mine_block(self.difficulty)
         self.chain.append(block)
+        # Store block in MongoDB
+        db_helpers.blocks.insert_one(block.to_dict())
         return block
 
     def add_transaction(self, transaction: Transaction) -> bool:
-        """Add a new transaction to pending transactions."""
+        """Add a new transaction to pending transactions and MongoDB."""
         if transaction.validate():
             self.pending_transactions.append(transaction)
+            # Store transaction in MongoDB
+            db_helpers.add_transaction(transaction.sender, transaction.receiver, transaction.amount, {"timestamp": transaction.timestamp})
             return True
         return False
 
     def mine_pending_transactions(self, miner_address: str) -> Block:
         """
         Mine pending transactions and add reward transaction.
+        Update balances in MongoDB.
         """
         # Add mining reward transaction
         reward_transaction = Transaction(
@@ -50,14 +59,29 @@ class Blockchain:
             amount=self.mining_reward
         )
         self.pending_transactions.append(reward_transaction)
+        # Store reward transaction in MongoDB
+        db_helpers.add_transaction(reward_transaction.sender, reward_transaction.receiver, reward_transaction.amount, {"timestamp": reward_transaction.timestamp})
 
         # Create new block
         block = self.add_block(self.pending_transactions)
+        # Update balances for all transactions in the block
+        for tx in self.pending_transactions:
+            # Update sender balance
+            if tx.sender != "Network":
+                sender_balance = db_helpers.get_balance(tx.sender) or 0.0
+                db_helpers.update_balance(tx.sender, sender_balance - tx.amount)
+            # Update receiver balance
+            receiver_balance = db_helpers.get_balance(tx.receiver) or 0.0
+            db_helpers.update_balance(tx.receiver, receiver_balance + tx.amount)
         self.pending_transactions = []
         return block
 
     def get_balance(self, address: str) -> float:
-        """Calculate balance for a given address."""
+        """Get balance from MongoDB balances collection."""
+        balance = db_helpers.get_balance(address)
+        if balance is not None:
+            return balance
+        # Fallback to in-memory calculation if not found
         balance = 0.0
         for block in self.chain:
             for tx in block.transactions:

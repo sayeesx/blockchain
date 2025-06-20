@@ -6,3 +6,4 @@ numpy>=1.21.0,<2.0.0
 python-dotenv==0.19.0
 pydantic>=1.8.2,<2.0.0
 setuptools<81
+pymongo>=4.0.0,<5.0.0

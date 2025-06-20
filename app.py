@@ -1,10 +1,14 @@
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket, Body
 from fastapi.middleware.cors import CORSMiddleware
 from blockchain.chain import Blockchain
 from blockchain.transaction import Transaction
+from blockchain.token import miznet_token
+from blockchain.marketplace import Marketplace
 from ml.fraud_detection import FraudDetector
 from ml.difficulty_model import DifficultyAdjuster
+from db.helpers import transfer_token, get_token, get_balance as get_token_balance, create_token, log_fraud_alert
 from typing import List, Dict, Any, Set
+from pydantic import BaseModel, Field
 import uvicorn
 
 app = FastAPI(title="SmartChain API")
@@ -20,6 +24,78 @@ app.add_middleware(
 blockchain = Blockchain()
 fraud_detector = FraudDetector()
 difficulty_adjuster = DifficultyAdjuster()
+marketplace = Marketplace()
+
+# --- Pydantic Models for Validation ---
+class TokenTransferRequest(BaseModel):
+    sender: str = Field(..., example="alice")
+    receiver: str = Field(..., example="bob")
+    amount: float = Field(..., gt=0, example=100)
+
+class TokenBalanceResponse(BaseModel):
+    address: str
+    balance: float
+
+class MarketplaceListRequest(BaseModel):
+    seller: str = Field(..., example="alice")
+    amount: float = Field(..., gt=0, example=50)
+    price_per_token: float = Field(..., gt=0, example=2.5)
+
+class MarketplaceBuyRequest(BaseModel):
+    buyer: str = Field(..., example="bob")
+    listing_id: str = Field(...)
+    amount: float = Field(..., gt=0, example=10)
+
+# --- Token Endpoints ---
+@app.post("/token/transfer")
+async def token_transfer(req: TokenTransferRequest):
+    """Transfer Miznet tokens between users, with fraud detection."""
+    # Fraud detection (example: flag large transfers)
+    if req.amount > 10000:
+        log_fraud_alert(tx_id="N/A", reason="Large token transfer", score=1.0)
+        raise HTTPException(status_code=403, detail="Transfer flagged as potentially fraudulent.")
+    # Perform transfer
+    if not transfer_token("MIZ", req.sender, req.receiver, req.amount):
+        raise HTTPException(status_code=400, detail="Insufficient balance or invalid transfer.")
+    return {"message": "Transfer successful"}
+
+@app.get("/token/balance/{address}", response_model=TokenBalanceResponse)
+async def token_balance(address: str):
+    """Get Miznet token balance for an address."""
+    token = get_token("MIZ")
+    if not token:
+        raise HTTPException(status_code=404, detail="Miznet token not found.")
+    balance = token.get("balances", {}).get(address, 0.0)
+    return {"address": address, "balance": balance}
+
+# --- Marketplace Endpoints ---
+@app.post("/marketplace/list")
+async def marketplace_list(req: MarketplaceListRequest):
+    """List Miznet tokens for sale."""
+    # Check seller balance
+    token = get_token("MIZ")
+    if not token or token.get("balances", {}).get(req.seller, 0.0) < req.amount:
+        raise HTTPException(status_code=400, detail="Insufficient token balance to list.")
+    listing_id = marketplace.list_token_for_sale(req.seller, "MIZ", req.amount, req.price_per_token)
+    return {"message": "Listing created", "listing_id": listing_id}
+
+@app.post("/marketplace/buy")
+async def marketplace_buy(req: MarketplaceBuyRequest):
+    """Buy Miznet tokens from a listing, with fraud detection."""
+    # Fraud detection (example: flag rapid or large purchases)
+    if req.amount > 10000:
+        log_fraud_alert(tx_id=req.listing_id, reason="Large marketplace purchase", score=1.0)
+        raise HTTPException(status_code=403, detail="Purchase flagged as potentially fraudulent.")
+    success = marketplace.buy_token(req.buyer, req.listing_id, req.amount)
+    if not success:
+        raise HTTPException(status_code=400, detail="Purchase failed. Check listing and balance.")
+    return {"message": "Purchase successful"}
+
+@app.get("/marketplace/listings")
+async def marketplace_listings():
+    """Get all open Miznet token listings."""
+    listings = marketplace.get_listings("MIZ")
+    return {"listings": listings}
 
 class ConnectionManager:
     def __init__(self):
